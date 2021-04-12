@@ -1,0 +1,17 @@
+[package]
+name = "cnpj"
+version = "0.0.1"
+authors = ["Rodrigo Navarro <rnavarro@rnavarro.com.br>"]
+edition = "2018"
+description = "Brazilian CNPJ parsing, validating and formatting library."
+categories = ["no-std"]
+keywords = ["cnpj", "Brasil", "Brazil"]
+documentation = "https://docs.rs/cnpj"
+license = "MIT"
+
+[dependencies]
+arrayvec = "0.7"
+rand = { version = "0.8.3", optional = true }
+
+[features]
+default = []
