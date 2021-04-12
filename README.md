@@ -1,4 +1,4 @@
-# CPF
+# CNPJ
 
 Brazilian CNPJ parsing, validating and formatting library.
 
