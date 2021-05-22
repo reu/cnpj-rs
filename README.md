@@ -26,7 +26,7 @@ The library can be used on no_std environments by disabling the `std` flag:
 
 ```toml
 [dependencies]
-cnpj = { version = "0.1", default-features = false }
+cnpj = { version = "0.2", default-features = false }
 ```
 
 ## Random CNPJ generation support
@@ -35,7 +35,7 @@ The `rand` feature flag enables random CNPJ generation:
 
 ```toml
 [dependencies]
-cnpj = { version = "0.1", features = ["rand"] }
+cnpj = { version = "0.2", features = ["rand"] }
 rand = "0.8"
 ```
 

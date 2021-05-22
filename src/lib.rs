@@ -32,7 +32,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! cnpj = { version = "0.1", default-features = false }
+//! cnpj = { version = "0.2", default-features = false }
 //! ```
 //!
 //! ## Random CNPJ generation support
@@ -41,7 +41,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! cnpj = { version = "0.1", features = ["rand"] }
+//! cnpj = { version = "0.2", features = ["rand"] }
 //! rand = "0.8"
 //! ```
 //!
