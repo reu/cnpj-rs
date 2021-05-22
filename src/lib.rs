@@ -1,99 +1,151 @@
 #![no_std]
 
+//! # CNPJ
+//!
+//! Brazilian CNPJ parsing, validating and formatting library.
+//!
+//! ```rust
+//! # fn main() -> Result<(), cnpj::ParseCnpjError> {
+//! use cnpj::Cnpj;
+//!
+//! // Use the `valid` function if all you need is validating a CNPJ number
+//! assert!(cnpj::valid("96769900000177"));
+//! assert!(cnpj::valid("96.769.900/0001-77"));
+//! assert!(!cnpj::valid("00.000.000/0000-00"));
+//!
+//! // Parse into a Cnpj struct if you need formatting and other metadata
+//! let cnpj: Cnpj = "96769900000177".parse()?;
+//! assert_eq!(cnpj.formatted().as_str(), "96.769.900/0001-77");
+//! assert_eq!(cnpj.digits(), &[9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]);
+//!
+//! // Note that the Cnpj struct is guaranteed to always be valid
+//! assert!("00.000.000/0000-00".parse::<Cnpj>().is_err());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## no_std support
+//!
+//! The library can be used on no_std environments by disabling the `std` flag:
+//!
+//! ```toml
+//! [dependencies]
+//! cnpj = { version = "0.1", default-features = false }
+//! ```
+//!
+//! ## Random CNPJ generation support
+//!
+//! The `rand` feature flag enables random CNPJ generation:
+//!
+//! ```toml
+//! [dependencies]
+//! cnpj = { version = "0.1", features = ["rand"] }
+//! rand = "0.8"
+//! ```
+//!
+//! ```rust
+//! # #[cfg(feature = "rand")] {
+//! use cnpj::Cnpj;
+//! use rand;
+//! use rand::Rng;
+//!
+//! let cnpj: Cnpj = rand::thread_rng().gen();
+//! # }
+//! ```
+
 use arrayvec::{ArrayString, ArrayVec};
 use core::char::from_digit;
 use core::convert::TryFrom;
 use core::fmt;
 use core::str::FromStr;
 
-#[cfg(feature = "rand")]
-use rand::distributions::{Distribution, Standard, Uniform};
-#[cfg(feature = "rand")]
-use rand::Rng;
-
-static BLACK_LIST: &'static [[u8; 14]] = &[
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
-    [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
-    [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
-    [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
-    [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
-    [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7],
-    [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8],
-    [9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9],
-];
-
-/// Validates the given CNPJ number.
-/// ```
+/// Validates a CNPJ number.
+/// ```rust
 /// use cnpj;
 ///
 /// assert!(cnpj::valid("96.769.900/0001-77"));
-/// assert!(cnpj::valid("96769900000177"));
-/// assert!(!cnpj::valid("96.769.900/0001-78"));
+/// assert!(!cnpj::valid("00.000.000/0000-00"));
 /// ```
 pub fn valid<T: AsRef<str>>(cnpj: T) -> bool {
     parse(cnpj).is_ok()
 }
 
-/// Parses a CNPJ number.
-/// ```
-/// use cnpj;
-///
-/// assert!(cnpj::parse("96.769.900/0001-77").is_ok());
-/// assert!(cnpj::parse("96769900000177").is_ok());
-/// assert!(cnpj::parse("96.769.900/0001-78").is_err());
-/// ```
-pub fn parse<T: AsRef<str>>(cnpj: T) -> Result<CNPJ, ParseCNPJError> {
-    let cnpj = cnpj.as_ref();
-
-    let digits_count = cnpj.chars().filter(|c| c.is_numeric()).count();
-
-    if digits_count < 7 || digits_count > 14 {
-        return Err(ParseCNPJError::InvalidLength);
-    }
-
-    let mut digits = cnpj
-        .chars()
-        .filter_map(|c| c.to_digit(10).map(|d| d as u8))
-        .collect::<ArrayVec<u8, 14>>();
-
-    for i in 0..digits.remaining_capacity() {
-        digits.insert(i, 0);
-    }
-
-    let cnpj = CNPJ {
-        digits: digits.into_inner().unwrap(),
-    };
-
-    if cnpj.valid() {
-        Ok(cnpj)
-    } else {
-        Err(ParseCNPJError::InvalidChecksum)
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum ParseCNPJError {
+#[derive(Debug, PartialEq, Clone, Hash)]
+pub enum ParseCnpjError {
     InvalidLength,
     InvalidChecksum,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct CNPJ {
+/// A valid CNPJ number.
+///
+/// Initialize a `Cnpj` from a `&str` or an array of digits:
+/// ```rust
+/// # fn main() -> Result<(), cnpj::ParseCnpjError> {
+/// # use core::convert::TryFrom;
+/// use cnpj::Cnpj;
+///
+/// let cnpj1 = "96.769.900/0001-77".parse::<Cnpj>()?;
+/// let cnpj2 = Cnpj::try_from([9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7])?;
+/// assert_eq!(cnpj1, cnpj2);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Note that the `Cnpj` struct can only be initialized after a successfully parse,
+/// so it is guaranteed to always be valid.
+/// ```rust
+/// use cnpj::Cnpj;
+///
+/// let cnpj = "00.000.000/0000-00".parse::<Cnpj>();
+/// assert!(cnpj.is_err());
+/// ```
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+pub struct Cnpj {
     digits: [u8; 14],
 }
 
-impl CNPJ {
+impl Cnpj {
+    /// The Cnpj digits.
+    /// ```rust
+    /// # fn main() -> Result<(), cnpj::ParseCnpjError> {
+    /// use cnpj::Cnpj;
+    ///
+    /// let cnpj: Cnpj = "96.769.900/0001-77".parse()?;
+    /// assert_eq!(cnpj.digits(), &[9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn digits(&self) -> &[u8; 14] {
         &self.digits
     }
 
+    /// Formats a Cnpj number.
+    /// ```rust
+    /// # fn main() -> Result<(), cnpj::ParseCnpjError> {
+    /// use cnpj::Cnpj;
+    ///
+    /// let cnpj: Cnpj = "96769900000177".parse()?;
+    /// assert_eq!(cnpj.formatted().as_str(), "96.769.900/0001-77");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Note that numbers with less than 14 digits will be padded by zeros.
+    /// ```rust
+    /// # fn main() -> Result<(), cnpj::ParseCnpjError> {
+    /// use cnpj::Cnpj;
+    ///
+    /// let cnpj: Cnpj = "1.219.900/0001-97".parse()?;
+    /// assert_eq!(cnpj.formatted().as_str(), "01.219.900/0001-97");
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn formatted(&self) -> ArrayString<18> {
         let d = self
             .digits
             .iter()
             .map(|d| from_digit((*d).into(), 10).unwrap())
-            .collect::<ArrayVec<char, 14>>();
+            .collect::<ArrayVec<char, 18>>();
 
         let mut fmt = ArrayString::<18>::new();
         fmt.push(d[0]);
@@ -116,21 +168,16 @@ impl CNPJ {
         fmt.push(d[13]);
         fmt
     }
+}
 
-    pub fn check_digits(&self) -> (&u8, &u8) {
-        (&self.digits[12], &self.digits[13])
+fn valid_digits(digits: &[u8; 14]) -> bool {
+    if digits.windows(2).all(|d| d[0] == d[1]) {
+        return false;
     }
 
-    fn valid(&self) -> bool {
-        if BLACK_LIST.contains(self.digits()) {
-            return false;
-        }
-
-        let check_digit1 = check_digit(&self.digits[0..12]);
-        let check_digit2 = check_digit(&self.digits[0..13]);
-
-        self.check_digits() == (&check_digit1, &check_digit2)
-    }
+    [12, 13]
+        .iter()
+        .all(|d| digits[*d] == check_digit(&digits[0..*d]))
 }
 
 fn check_digit(digits: &[u8]) -> u8 {
@@ -138,8 +185,7 @@ fn check_digit(digits: &[u8]) -> u8 {
         .iter()
         .rev()
         .zip((2..=9).cycle())
-        .map(|(i, n)| i * (n as u8))
-        .map(|n| n as usize)
+        .map(|(i, n)| (i * n) as usize)
         .sum::<usize>();
 
     match check_sum % 11 {
@@ -148,64 +194,122 @@ fn check_digit(digits: &[u8]) -> u8 {
     }
 }
 
-impl fmt::Display for CNPJ {
+fn parse<T: AsRef<str>>(cnpj: T) -> Result<Cnpj, ParseCnpjError> {
+    let cnpj = cnpj.as_ref();
+
+    let mut digits = ArrayVec::<u8, 14>::new();
+
+    for (i, digit) in cnpj
+        .chars()
+        .filter_map(|c| c.to_digit(10).map(|d| d as u8))
+        .enumerate()
+    {
+        if i == 14 {
+            return Err(ParseCnpjError::InvalidLength);
+        } else {
+            digits.push(digit);
+        }
+    }
+
+    if digits.len() < 7 {
+        return Err(ParseCnpjError::InvalidLength);
+    }
+
+    for i in 0..digits.remaining_capacity() {
+        digits.insert(i, 0);
+    }
+
+    let digits = digits.into_inner().unwrap();
+
+    if valid_digits(&digits) {
+        Ok(Cnpj { digits })
+    } else {
+        Err(ParseCnpjError::InvalidChecksum)
+    }
+}
+
+impl fmt::Display for Cnpj {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for c in self.formatted().chars() {
+        for c in self
+            .digits()
+            .iter()
+            .map(|d| from_digit((*d).into(), 10).unwrap())
+        {
             write!(f, "{}", c)?;
         }
         Ok(())
     }
 }
 
-impl FromStr for CNPJ {
-    type Err = ParseCNPJError;
+impl FromStr for Cnpj {
+    type Err = ParseCnpjError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         parse(s)
     }
 }
 
-impl TryFrom<&str> for CNPJ {
-    type Error = ParseCNPJError;
+impl TryFrom<&str> for Cnpj {
+    type Error = ParseCnpjError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         parse(value)
     }
 }
 
-impl TryFrom<[u8; 14]> for CNPJ {
-    type Error = ParseCNPJError;
+impl TryFrom<[u8; 14]> for Cnpj {
+    type Error = ParseCnpjError;
 
     fn try_from(value: [u8; 14]) -> Result<Self, Self::Error> {
-        let cnpj = CNPJ { digits: value };
-        if cnpj.valid() {
-            Ok(cnpj)
+        if valid_digits(&value) {
+            Ok(Cnpj { digits: value })
         } else {
-            Err(ParseCNPJError::InvalidChecksum)
+            Err(ParseCnpjError::InvalidChecksum)
         }
     }
 }
 
-impl fmt::Display for ParseCNPJError {
+impl fmt::Display for ParseCnpjError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ParseCNPJError::InvalidChecksum => "invalid CNPJ checksum".fmt(f),
-            ParseCNPJError::InvalidLength => "invalid CNPJ lenght".fmt(f),
+            ParseCnpjError::InvalidChecksum => "invalid Cnpj checksum".fmt(f),
+            ParseCnpjError::InvalidLength => "invalid Cnpj lenght".fmt(f),
         }
     }
 }
 
+#[cfg(feature = "std")]
+extern crate std;
+#[cfg(feature = "std")]
+impl std::error::Error for ParseCnpjError {}
+
 #[cfg(feature = "rand")]
-impl Distribution<CNPJ> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CNPJ {
+use rand::{
+    distributions::{Distribution, Standard, Uniform},
+    Rng,
+};
+
+/// Random CNPJ generation
+///
+/// ```rust
+/// # #[cfg(feature = "rand")] {
+/// use cnpj::Cnpj;
+/// use rand::Rng;
+///
+/// let cnpj: Cnpj = rand::thread_rng().gen();
+/// # }
+/// ```
+#[cfg(feature = "rand")]
+impl Distribution<Cnpj> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Cnpj {
         let digit = Uniform::from(1..9);
         let mut digits = ArrayVec::<u8, 14>::new();
-        for _ in 0..11 {
+        for _ in 0..12 {
             digits.push(digit.sample(rng));
         }
         digits.push(check_digit(&digits.as_slice()));
         digits.push(check_digit(&digits.as_slice()));
-        CNPJ {
+        Cnpj {
             digits: digits.into_inner().unwrap(),
         }
     }
@@ -216,75 +320,106 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lol() {
-        assert_eq!(check_digit(&[0, 1, 2, 1, 9, 9, 0, 0, 0, 0, 0, 1]), 9);
-        assert_eq!(check_digit(&[0, 1, 2, 1, 9, 9, 0, 0, 0, 0, 0, 1, 9]), 7);
-    }
-
-    #[test]
     fn it_validates() {
         assert!(valid("96.769.900/0001-77"));
-        assert!(!valid("96.769.900/0001-78"));
+        assert!(!valid("385.211.390-49"));
     }
 
     #[test]
     fn it_disallow_same_digit_numbers() {
-        assert!(!valid("11111111111"));
-        assert!(!valid("22222222222"));
-        assert!(!valid("33333333333"));
-        assert!(!valid("44444444444"));
-        assert!(!valid("55555555555"));
-        assert!(!valid("66666666666"));
-        assert!(!valid("77777777777"));
-        assert!(!valid("88888888888"));
-        assert!(!valid("99999999999"));
+        assert!(!valid("11.111.111/1111-11"));
+        assert!(!valid("22.222.222/2222-22"));
+        assert!(!valid("33.333.333/3333-33"));
+        assert!(!valid("44.444.444/4444-44"));
+        assert!(!valid("55.555.555/5555-55"));
+        assert!(!valid("66.666.666/6666-66"));
+        assert!(!valid("77.777.777/7777-77"));
+        assert!(!valid("88.888.888/8888-88"));
+        assert!(!valid("99.999.999/9999-99"));
     }
 
     #[test]
     fn it_parses() {
-        let cnpj = parse("96.769.900/0001-77");
+        let cnpj = "96769900000177".parse::<Cnpj>();
         assert!(cnpj.is_ok());
-        assert_eq!(cnpj.unwrap().digits(), &[9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]);
+        assert_eq!(
+            cnpj.unwrap().digits(),
+            &[9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]
+        );
 
-        let cnpj = parse("96.769.900/0001-77");
+        let cnpj = "96.769.900/0001-77".parse::<Cnpj>();
         assert!(cnpj.is_ok());
-        assert_eq!(cnpj.unwrap().digits(), &[9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]);
+        assert_eq!(
+            cnpj.unwrap().digits(),
+            &[9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]
+        );
     }
 
     #[test]
     fn it_initializes_with_digits() {
-        let cnpj = CNPJ::try_from([9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]);
+        let cnpj = Cnpj::try_from([9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]);
         assert!(cnpj.is_ok());
-        assert_eq!(cnpj.unwrap().digits(), &[9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]);
+        assert_eq!(
+            cnpj.unwrap().digits(),
+            &[9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]
+        );
 
-        let cnpj = CNPJ::try_from([9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 8]);
+        let cnpj = Cnpj::try_from([9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 8]);
         assert!(cnpj.is_err());
     }
 
     #[test]
-    fn it_pads_numbers_with_less_than_eleven_digits() {
+    fn it_pads_when_necessary() {
         let cnpj = parse("1.219.900/0001-97").unwrap();
         assert_eq!(cnpj.digits(), &[0, 1, 2, 1, 9, 9, 0, 0, 0, 0, 0, 1, 9, 7]);
     }
 
     #[test]
-    fn it_fails_on_invalid_checksums() {
-        let cnpj = parse("96.769.900/0001-78");
+    fn it_fails_to_parse_numbers_that_dont_match_the_min_length() {
+        let cnpj = "01".parse::<Cnpj>();
         assert!(cnpj.is_err());
-        assert_eq!(cnpj.unwrap_err(), ParseCNPJError::InvalidChecksum);
+        assert_eq!(cnpj.unwrap_err(), ParseCnpjError::InvalidLength);
+
+        let cnpj = "0".parse::<Cnpj>();
+        assert!(cnpj.is_err());
+        assert_eq!(cnpj.unwrap_err(), ParseCnpjError::InvalidLength);
+    }
+
+    #[test]
+    fn it_fails_to_parse_numbers_with_more_than_fourteen_digits() {
+        let cnpj = "196769900000177".parse::<Cnpj>();
+        assert!(cnpj.is_err());
+        assert_eq!(cnpj.unwrap_err(), ParseCnpjError::InvalidLength);
+    }
+
+    #[test]
+    fn it_fails_on_invalid_checksums() {
+        let cnpj = "96769900000178".parse::<Cnpj>();
+        assert!(cnpj.is_err());
+        assert_eq!(cnpj.unwrap_err(), ParseCnpjError::InvalidChecksum);
     }
 
     #[test]
     fn it_formats() {
-        let cnpj = parse("96769900000177").unwrap();
+        let cnpj = "96769900000177".parse::<Cnpj>().unwrap();
         assert_eq!(cnpj.formatted().as_str(), "96.769.900/0001-77");
+    }
+
+    #[test]
+    fn it_display() {
+        extern crate std;
+        let cnpj = "96.769.900/0001-77".parse::<Cnpj>().unwrap();
+        assert_eq!(std::format!("{}", cnpj), "96769900000177");
     }
 
     #[test]
     #[cfg(feature = "rand")]
     fn it_generates_valid_numbers() {
         use rand;
-        let mut rng = rand::thread_rng();
-        assert!(valid(rand::thread_rng().gen::<CNPJ>().formatted()));
+        use rand::Rng;
+        for _ in 1..10000 {
+            let cnpj = rand::thread_rng().gen::<Cnpj>();
+            assert!(valid_digits(cnpj.digits()));
+        }
     }
 }
