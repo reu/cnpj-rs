@@ -14,7 +14,6 @@ repository = "https://github.com/reu/cnpj-rs"
 all-features = true
 
 [dependencies]
-arrayvec = "0.7"
 rand = { version = "0.8", optional = true }
 
 [features]

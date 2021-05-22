@@ -6,17 +6,18 @@ Brazilian CNPJ parsing, validating and formatting library.
 use cnpj::Cnpj;
 
 // Use the `valid` function if all you need is validating a CNPJ number
-assert!(cnpj::valid("38521139039"));
-assert!(!cnpj::valid("38521139030"));
+assert!(cnpj::valid("96.769.900/0001-77"));
+assert!(cnpj::valid("96769900000177"));
+assert!(!cnpj::valid("00.000.000/0000-00"));
 
-// Parse into a Cnpj struct if you need formatting and other metadata
-let cnpj: Cnpj = "38521139039".parse()?;
-
-assert_eq!(cnpj.formatted().as_str(), "385.211.390-39");
-assert_eq!(cnpj.digits(), &[3, 8, 5, 2, 1, 1, 3, 9, 0, 3, 9]);
+// Parse into a Cnpj struct if you need formatting or other metadata
+let cnpj: Cnpj = "96769900000177".parse()?;
+assert_eq!(format!("{}", cnpj), "96.769.900/0001-77");
+assert_eq!(cnpj.digits(), [9, 6, 7, 6, 9, 9, 0, 0, 0, 0, 0, 1, 7, 7]);
 
 // Note that the Cnpj struct is guaranteed to always be valid
-assert!("38521139030".parse::<Cnpj>().is_err());
+assert!("00.000.000/0000-00".parse::<Cnpj>().is_err());
+assert!(cnpj::valid("96.769.900/0001-77".parse::<Cnpj>()?));
 ```
 
 ## no_std support
