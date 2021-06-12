@@ -404,12 +404,21 @@ mod tests {
     #[test]
     #[cfg(feature = "rand")]
     fn it_generates_valid_numbers() {
-        extern crate std;
-        use rand;
-        use rand::Rng;
+        use rand::{rngs::SmallRng, Rng, SeedableRng};
+        let mut rng = SmallRng::seed_from_u64(0);
         for _ in 1..10000 {
-            let cnpj = rand::thread_rng().gen::<Cnpj>();
+            let cnpj = rng.gen::<Cnpj>();
             assert!(valid(cnpj));
         }
+    }
+
+    #[test]
+    #[cfg(feature = "rand")]
+    fn it_generates_different_numbers() {
+        use rand::{rngs::SmallRng, Rng, SeedableRng};
+        let mut rng = SmallRng::seed_from_u64(0);
+        let cnpj1 = rng.gen::<Cnpj>();
+        let cnpj2 = rng.gen::<Cnpj>();
+        assert_ne!(cnpj1, cnpj2);
     }
 }
