@@ -298,7 +298,7 @@ use rand::{
 #[cfg_attr(docsrs, doc(cfg(feature = "rand")))]
 impl Distribution<Cnpj> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Cnpj {
-        let digit = Uniform::from(1..9);
+        let digit = Uniform::from(1..=9);
         let mut digits: [u8; 14] = [0; 14];
         for d in digits.iter_mut().take(12) {
             *d = digit.sample(rng);
