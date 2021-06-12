@@ -1,6 +1,6 @@
 [package]
 name = "cnpj"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Rodrigo Navarro <rnavarro@rnavarro.com.br>"]
 edition = "2018"
 description = "Brazilian CNPJ parsing, validating and formatting library."
